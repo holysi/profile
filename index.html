@@ -1,12 +1,232 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="zh-Hant">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>preactice fro ai coding in 365 projects</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>preactice fro ai coding in 365 projects</title>
+  <style>
+    :root { color-scheme: dark; }
 
+    body{
+      margin:0;
+      min-height:100vh;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans TC", sans-serif;
+      background:
+        radial-gradient(1200px 800px at 20% 10%, rgba(120,160,255,.18), transparent 60%),
+        radial-gradient(900px 700px at 80% 30%, rgba(255,140,200,.12), transparent 55%),
+        radial-gradient(900px 900px at 50% 90%, rgba(90,255,200,.10), transparent 60%),
+        #070a12;
+      color:#e8ecff;
+      overflow-x:hidden;
+    }
+
+    /* 背景層：不擋點擊/滑動 */
+    .crane-bg{
+      position:fixed;
+      inset:0;
+      overflow:hidden;
+      z-index:-1;
+      pointer-events:none;
+    }
+
+    .crane{
+      position:absolute;
+      left:0; top:0;
+      width:120px; height:60px;
+      opacity: var(--op, .75);
+      will-change: transform;
+      filter: drop-shadow(0 8px 14px rgba(0,0,0,.35));
+    }
+
+    .crane__inner{
+      width:100%; height:100%;
+      animation: float var(--floatDur, 2.6s) ease-in-out infinite;
+      animation-delay: var(--delay, 0s);
+      transform-origin: 50% 50%;
+    }
+
+    .crane__svg{ width:100%; height:100%; display:block; }
+
+    .p-body { fill: hsl(var(--h, 210) 30% 82%); }
+    .p-w1   { fill: hsl(var(--h, 210) 35% 76%); }
+    .p-w2   { fill: hsl(var(--h, 210) 28% 70%); }
+    .p-edge { fill: rgba(255,255,255,.05); }
+
+    /* SVG 多邊形翅膀：用 CSS 做拍翅 */
+    .wing{
+      transform-box: fill-box;
+      transform-origin: 55% 55%;
+      animation: flap var(--flapDur, 1.25s) ease-in-out infinite;
+      animation-delay: var(--delay, 0s);
+    }
+    .wing.r{
+      transform-origin: 45% 55%;
+      animation-name: flapR;
+    }
+
+    @keyframes flap{
+      0%,100%{ transform: rotate(10deg) translateY(0); }
+      50%    { transform: rotate(-18deg) translateY(1px); }
+    }
+    @keyframes flapR{
+      0%,100%{ transform: rotate(-10deg) translateY(0); }
+      50%    { transform: rotate(18deg) translateY(1px); }
+    }
+    @keyframes float{
+      0%,100%{ transform: translateY(0); }
+      50%    { transform: translateY(-6px); }
+    }
+
+    @media (prefers-reduced-motion: reduce){
+      .crane__inner, .wing { animation: none !important; }
+    }
+
+    /* demo 內容 */
+    main{
+      min-height:100vh;
+      display:grid;
+      place-items:center;
+      padding:64px 20px;
+      text-align:center;
+    }
+    .card{
+      max-width:820px;
+      background: rgba(10,14,26,.55);
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 18px;
+      padding: 22px 18px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    h1{ margin:0 0 10px; font-size: 24px; letter-spacing:.5px; }
+    p{ margin:0; opacity:.85; line-height:1.6; }
+  </style>
 </head>
 <body>
-    <a href="3d_room_tour.html">#100 3d room</a>
+  <div class="crane-bg" aria-hidden="true"></div>
+
+  <main>
+    <div class="card">
+      <h1>動態背景</h1>
+      <p>#101 Low Poly Cranes BG in this page把這層放在你的網站最底層就好。紙鶴會跟著滑鼠飛、翅膀用 CSS 拍動。</p>
+      <h1>#100 3d room_tour</h1>
+      <a href="3d_room_tour.html">#100 3d room</a>
+      
+  
+    </div>
+  </main>
+
+  <script>
+    const bg = document.querySelector(".crane-bg");
+
+    const CRANE_SVG = `
+      <svg class="crane__svg" viewBox="0 0 120 60" xmlns="http://www.w3.org/2000/svg">
+        <!-- 身體 -->
+        <polygon class="p-body" points="52,30 74,18 96,30 74,42"/>
+        <polygon class="p-edge" points="52,30 74,18 74,42"/>
+        <!-- 左翅 -->
+        <polygon class="wing l p-w1" points="52,30 10,12 40,36"/>
+        <polygon class="p-edge" points="52,30 10,12 40,36"/>
+        <!-- 右翅 -->
+        <polygon class="wing r p-w2" points="52,30 110,12 80,36"/>
+        <polygon class="p-edge" points="52,30 110,12 80,36"/>
+        <!-- 尾 -->
+        <polygon class="p-w2" points="52,30 24,52 56,42"/>
+        <!-- 頭/喙 -->
+        <polygon class="p-w1" points="96,30 120,22 110,30 120,38"/>
+      </svg>
+    `;
+
+    const N = 18;               // 紙鶴數量
+    const FOLLOW = 0.0042;      // 跟隨力道
+    const DAMP   = 0.86;        // 阻尼（越小越飄）
+    const SWARM  = 90;          // 群聚半徑（會在滑鼠周圍分散）
+
+    const cranes = [];
+    let w = innerWidth, h = innerHeight;
+
+    // 目標點（滑鼠），給個預設在畫面中央
+    const target = { x: w * 0.5, y: h * 0.5 };
+
+    function rand(min, max){ return Math.random() * (max - min) + min; }
+
+    function makeCrane(i){
+      const el = document.createElement("div");
+      el.className = "crane";
+      el.style.setProperty("--h", String(Math.floor(rand(190, 320))));
+      el.style.setProperty("--op", String(rand(0.35, 0.85)));
+      el.style.setProperty("--delay", `${rand(-2, 0)}s`);
+      el.style.setProperty("--flapDur", `${rand(0.9, 1.5)}s`);
+      el.style.setProperty("--floatDur", `${rand(2.0, 3.4)}s`);
+
+      const inner = document.createElement("div");
+      inner.className = "crane__inner";
+      inner.innerHTML = CRANE_SVG;
+
+      el.appendChild(inner);
+      bg.appendChild(el);
+
+      const s = rand(0.45, 0.95);
+      const c = {
+        el,
+        x: rand(0, w),
+        y: rand(0, h),
+        vx: rand(-1.2, 1.2),
+        vy: rand(-1.2, 1.2),
+        s,
+        seed: rand(0, 1000),
+      };
+
+      // 初始位置
+      el.style.transform = `translate3d(${c.x}px, ${c.y}px, 0) rotate(0deg) scale(${s})`;
+      return c;
+    }
+
+    for(let i=0;i<N;i++) cranes.push(makeCrane(i));
+
+    // 用 pointermove（滑鼠/觸控筆/觸控都適用） :contentReference[oaicite:2]{index=2}
+    window.addEventListener("pointermove", (e) => {
+      target.x = e.clientX;
+      target.y = e.clientY;
+    }, { passive: true });
+
+    window.addEventListener("resize", () => {
+      w = innerWidth; h = innerHeight;
+    });
+
+    function tick(t){
+      // 讓每隻在滑鼠周圍有不同偏移，形成「群」
+      for(const c of cranes){
+        const a = (t * 0.001) + c.seed;
+        const tx = target.x + Math.cos(a) * SWARM;
+        const ty = target.y + Math.sin(a * 1.13) * (SWARM * 0.66);
+
+        const ax = (tx - c.x) * FOLLOW;
+        const ay = (ty - c.y) * FOLLOW;
+
+        c.vx = (c.vx + ax) * DAMP;
+        c.vy = (c.vy + ay) * DAMP;
+
+        c.x += c.vx;
+        c.y += c.vy;
+
+        // 轉向速度方向
+        const rot = Math.atan2(c.vy, c.vx) * 180 / Math.PI;
+
+        // 邊界：稍微繞回來（避免飛出很遠）
+        if (c.x < -160) c.x = w + 160;
+        if (c.x > w + 160) c.x = -160;
+        if (c.y < -120) c.y = h + 120;
+        if (c.y > h + 120) c.y = -120;
+
+        c.el.style.transform = `translate3d(${c.x}px, ${c.y}px, 0) rotate(${rot}deg) scale(${c.s})`;
+      }
+
+      // 用 rAF 跟著螢幕刷新跑 :contentReference[oaicite:3]{index=3}
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  </script>
+
 </body>
 </html>
