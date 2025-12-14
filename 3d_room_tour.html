@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>3D 房間配置示意</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #202024;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    #app {
+      width: 100%;
+      height: 100%;
+    }
+    .hint {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      padding: 6px 10px;
+      font-size: 12px;
+      color: #eee;
+      background: rgba(0,0,0,0.45);
+      border-radius: 6px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+<div class="hint">
+  滑鼠左鍵旋轉、滾輪縮放、右鍵拖曳視角
+</div>
+
+<script type="module">
+  import * as THREE from 'https://unpkg.com/three@0.160.0?module';
+  import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js?module';
+
+  // 基本場景
+  const container = document.getElementById('app');
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x202024);
+
+  const camera = new THREE.PerspectiveCamera(
+    50,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
+  );
+  camera.position.set(12, 12, 16);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  container.appendChild(renderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.set(0, 0, 1.5); // 看向房間中心
+  controls.enableDamping = true;
+
+  // 光線
+  const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambient);
+
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  dirLight.position.set(10, 20, 10);
+  scene.add(dirLight);
+
+  // ===== 尺寸設定：L 型房間（主區 + 玄關區） =====
+  // 主區：寬 10（X），深 6（Z），中心在 (0,0)
+  // 玄關區：在右上角延伸 4 x 4，中心在 (3,4)
+
+  // 材質
+  const floorMat = new THREE.MeshPhongMaterial({ color: 0x888888 });
+  const subFloorMat = new THREE.MeshPhongMaterial({ color: 0x777777 });
+  const wallMat = new THREE.MeshPhongMaterial({ color: 0xf2f2f2 });
+  const bedMat = new THREE.MeshPhongMaterial({ color: 0xc2d6ff });
+  const sofaMat = new THREE.MeshPhongMaterial({ color: 0xffd1a9 });
+  const tableMat = new THREE.MeshPhongMaterial({ color: 0xffffff });
+  const tvMat = new THREE.MeshPhongMaterial({ color: 0x111111 });
+  const bookcaseMat = new THREE.MeshPhongMaterial({ color: 0xc19a6b });
+  const chairMat = new THREE.MeshPhongMaterial({ color: 0xdddddd });
+  const windowMat = new THREE.MeshPhongMaterial({
+    color: 0x99cfff,
+    transparent: true,
+    opacity: 0.5
+  });
+  const doorMat = new THREE.MeshPhongMaterial({ color: 0x8b5a2b });
+
+  // ===== 地板：主房間 + 玄關區 =====
+  const mainFloorGeo = new THREE.BoxGeometry(10, 0.2, 6);
+  const mainFloor = new THREE.Mesh(mainFloorGeo, floorMat);
+  mainFloor.position.set(0, 0, 0);
+  scene.add(mainFloor);
+
+  const entryFloorGeo = new THREE.BoxGeometry(4, 0.1, 4);
+  const entryFloor = new THREE.Mesh(entryFloorGeo, subFloorMat);
+  entryFloor.position.set(3, 0, 4);
+  scene.add(entryFloor);
+
+  // ===== 牆壁（L 型外框） =====
+  const wallThickness = 0.2;
+  const wallHeight = 4;
+
+  // 主區四面牆
+  const wallFront = new THREE.Mesh(
+    new THREE.BoxGeometry(10, wallHeight, wallThickness),
+    wallMat
+  );
+  wallFront.position.set(0, wallHeight / 2, -3);
+  scene.add(wallFront);
+  //床旁靠近L區牆
+  const wallBack = new THREE.Mesh(
+    new THREE.BoxGeometry(6, wallHeight, wallThickness),
+    wallMat
+  );
+  wallBack.position.set(-2, wallHeight / 2, 3);
+  scene.add(wallBack);
+
+  const wallLeft = new THREE.Mesh(
+    new THREE.BoxGeometry(wallThickness, wallHeight, 6),
+    wallMat
+  );
+  wallLeft.position.set(-5, wallHeight / 2, 0);
+  scene.add(wallLeft);
+
+  const wallRightMain = new THREE.Mesh(
+    new THREE.BoxGeometry(wallThickness, wallHeight, 6),
+    wallMat
+  );
+  wallRightMain.position.set(5, wallHeight / 2, 0);
+  scene.add(wallRightMain);
+
+  // 玄關外框牆（靠床）
+  const wallRightEntry1 = new THREE.Mesh(
+    new THREE.BoxGeometry(wallThickness, wallHeight, 3),
+    wallMat
+  );
+  wallRightEntry1.position.set(1, wallHeight / 2, 4.5);
+  scene.add(wallRightEntry1);
+
+// 玄關外框牆（右、前、後）
+  const wallRightEntry = new THREE.Mesh(
+    new THREE.BoxGeometry(wallThickness, wallHeight, 4),
+    wallMat
+  );
+  wallRightEntry.position.set(5, wallHeight / 2, 4);
+  scene.add(wallRightEntry);
+
+  const wallFrontEntry = new THREE.Mesh(
+    new THREE.BoxGeometry(4, wallHeight, wallThickness),
+    wallMat
+  );
+  wallFrontEntry.position.set(3, wallHeight / 2, 6);
+  scene.add(wallFrontEntry);
+//這裡
+  const wallBackEntry = new THREE.Mesh(
+     new THREE.BoxGeometry(wallThickness, wallHeight,6),
+     wallMat
+  );
+  wallBackEntry.position.set(1, wallHeight / 2, 2);
+  scene.add(wallBackEntry);
+
+  // 玄關與主區之間左側牆（右半留空當出入口）
+  const wallEntryInner = new THREE.Mesh(
+    new THREE.BoxGeometry(3, wallHeight, wallThickness),
+    wallMat
+  );
+  wallEntryInner.position.set(2.5, wallHeight / 2, 3);
+  scene.add(wallEntryInner);
+
+  // ===== 窗戶：L 左邊最左邊的牆（left wall） =====
+  const windowGeo = new THREE.BoxGeometry(2.2, 1.4, 0.6);
+  const windowMesh = new THREE.Mesh(windowGeo, windowMat);
+  // x = -5 是左牆，往內縮一點，靠近床頭高度
+  windowMesh.position.set(5, 1.7,-1);
+  windowMesh.rotation.y = Math.PI / 2; // 貼在左牆面
+  scene.add(windowMesh);
+
+  // ===== 家具配置：依照你描述的順序 =====
+  // L 左邊區塊：沙發 → 電視 → 床 → （床左上有窗戶）
+
+  // 沙發：靠主區下方牆，面向上方
+  const sofaBaseGeo = new THREE.BoxGeometry(3, 0.5, 1.2);
+  const sofaBase = new THREE.Mesh(sofaBaseGeo, sofaMat);
+  // z = -3 是下牆，往上內縮一點
+  sofaBase.position.set(-2.2, 0.25, -2.3);
+  scene.add(sofaBase);
+
+  const sofaBackGeo = new THREE.BoxGeometry(3, 0.8, 0.3);
+  const sofaBack = new THREE.Mesh(sofaBackGeo, sofaMat);
+  sofaBack.position.set(-2.2, 0.75, -2.9);
+  scene.add(sofaBack);
+
+  // 電視＋電視櫃：介於沙發與床之間，面向沙發
+  const tvStandGeo = new THREE.BoxGeometry(2, 0.4, 0.6);
+  const tvStand = new THREE.Mesh(tvStandGeo, bookcaseMat);
+  tvStand.position.set(-2.2, 0.2, -0.8);
+  scene.add(tvStand);
+
+  const tvGeo = new THREE.BoxGeometry(1.8, 1, 0.1);
+  const tv = new THREE.Mesh(tvGeo, tvMat);
+  tv.position.set(-2.2, 1.0, -0.45);
+  scene.add(tv);
+
+  // 床：靠主區上方牆，床的右邊是書櫃
+  const bedGeo = new THREE.BoxGeometry(3, 0.4, 1.5);
+  const bed = new THREE.Mesh(bedGeo, bedMat);
+  // z = 3 是上牆，往下內縮一點；x 保持偏左
+  bed.position.set(-1.4, 0.2, 2.25);
+  scene.add(bed);
+
+  // 書櫃：當作床右邊的隔間屏風
+  const bookcaseGeo = new THREE.BoxGeometry(0.4, 2.2, 1.6);
+  const bookcase = new THREE.Mesh(bookcaseGeo, bookcaseMat);
+  // 貼著床右側
+  bookcase.position.set(0.4, 1.1, 2.25);
+  scene.add(bookcase);
+
+  // 圓桌：在書櫃右邊、偏向玄關區
+  const tableTopGeo = new THREE.CylinderGeometry(0.9, 0.9, 0.1, 32);
+  const tableTop = new THREE.Mesh(tableTopGeo, tableMat);
+  tableTop.position.set(3, 0.75, 0);
+  scene.add(tableTop);
+
+  const tableLegGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.7, 16);
+  const tableLeg = new THREE.Mesh(tableLegGeo, chairMat);
+  tableLeg.position.set(3, 0.35, 0);
+  scene.add(tableLeg);
+
+  // 椅子：圓桌周圍
+  function addChair(x, z, rot) {
+    const seatGeo = new THREE.BoxGeometry(0.7, 0.1, 0.7);
+    const seat = new THREE.Mesh(seatGeo, chairMat);
+    seat.position.set(x, 0.5, z-4);
+    seat.rotation.y = rot;
+    const legGeo = new THREE.BoxGeometry(0.1, 0.5, 0.1);
+    const offsets = [
+      [0.25, 0.25],
+      [-0.25, 0.25],
+      [0.25, -0.25],
+      [-0.25, -0.25]
+    ];
+    offsets.forEach(([dx, dz]) => {
+      const leg = new THREE.Mesh(legGeo, chairMat);
+      leg.position.set(x + dx, 0.25, z-4 + dz);
+      scene.add(leg);
+    });
+    scene.add(seat);
+  }
+  addChair(3, 5.3, 0);
+  addChair(3, 2.7, 0);
+  addChair(4.2, 4, -Math.PI / 2);
+  addChair(1.8, 4, Math.PI / 2);
+
+  // 門：圓桌區右上方（玄關前牆上畫出一扇門）
+  const doorGeo = new THREE.BoxGeometry(0.4, 2.2, 0.9);
+  const door = new THREE.Mesh(doorGeo, doorMat);
+  // 貼在玄關前牆（z ≈ 6），偏右上位置
+  door.position.set(1, 1.1, 5);
+  scene.add(door);
+
+  // ===== 座標格線，方便理解方向 =====
+  const grid = new THREE.GridHelper(20, 20, 0x444444, 0x333333);
+  grid.position.y = 0.001;
+  scene.add(grid);
+
+  // ===== 簡單 runtime 測試 =====
+  console.assert(!!renderer, 'Renderer should be created');
+  console.assert(scene.children.length > 0, 'Scene should contain objects');
+
+  // ===== 動畫迴圈 =====
+  function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  // 視窗尺寸改變
+  window.addEventListener('resize', () => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  });
+</script>
+</body>
+</html>
