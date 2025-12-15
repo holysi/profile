@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tree</title>
+  <style>
+    html, body { margin:0; padding:0; overflow:hidden; background:#f2efe8; }
+    canvas { display:block; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+</head>
+<body>
+<script>
+// Global fruit particles array
+let globalFruitParticles = [];
+
+class Fruit {
+  constructor(size, index, colors, branchPos) {
+    this.size = size;
+    this.index = index;
+    this.matureChance = random(1);
+    this.isMature = false;
+    this.hidden = false;
+    this.maturityCounter = 0;
+    this.sprite = SpriteFactory.createFruitSprite(size, colors);
+    this.branchPos = branchPos; // Store initial position
+  }
+}
+
+class SpriteFactory {
+    //「棕櫚葉」sprite
+static palmFrondSprites = [];
+
+
+static initializePalmFronds() {
+this.palmFrondSprites = [];
+const count = floor(random(6, 10));
+for (let i = 0; i < count; i++) {
+const L = random(140, 220);
+const W = random(40, 70);
+const g = createGraphics(L + 40, W + 40);
+g.clear();
+g.noFill();
+
+
+// 主葉脈
+g.stroke(40, 90, 50, 220);
+g.strokeWeight(2.2);
+
+
+const ox = 20;
+const oy = (W + 40) / 2;
+
+
+// 畫一條微彎曲的主葉脈
+g.beginShape();
+for (let t = 0; t <= 1.001; t += 0.05) {
+const x = ox + t * L;
+const bend = sin(t * PI) * random(10, 22);
+const y = oy - bend;
+g.curveVertex(x, y);
+}
+g.endShape();
+
+
+// 小葉片(兩側羽狀)
+g.stroke(55, 120, 60, 200);
+g.strokeWeight(1.2);
+for (let k = 0; k < 42; k++) {
+const t = k / 41;
+const x = ox + t * L;
+const bend = sin(t * PI) * random(10, 22);
+const y = oy - bend;
+const len = map(1 - abs(t - 0.5) * 2, 0, 1, 10, 34) * random(0.8, 1.2);
+const a = map(t, 0, 1, -0.5, 0.5) + random(-0.15, 0.15);
+
+
+// 左右各一片
+g.line(x, y, x - cos(a) * len, y + sin(a) * len);
+g.line(x, y, x + cos(a) * len, y + sin(a) * len);
+}
+
+
+this.palmFrondSprites.push({ sprite: g, L, W });
+}
+this.trunkTip = { x: this.config.posX, y: this.config.posY };
+}
+
+
+static getRandomPalmFrond() {
+return random(this.palmFrondSprites);
+}
+
+  static leafSprites = [];
+  static flowerSprites = [];
+
+  static initializeSprites() {
+    let leafCount = floor(random(10, 15));
+    for (let i = 0; i < leafCount; i++) {
+      let size = random(30, 60);
+      let sprite = createGraphics(size * 2, size * 2);
+      sprite.colorMode(HSB);
+      sprite.noStroke();
+      let clr = [random(10, 40)+60, random(30, 70), random(50, 80), random([random(0.2, 1)])];
+      sprite.fill(clr[0], clr[1], clr[2], clr[3]);
+
+      sprite.drawingContext.shadowColor = color(0, 0, 0, 40);
+      sprite.drawingContext.shadowBlur = 20;
+
+      sprite.beginShape();
+      sprite.vertex(size, size * 0.75);
+      sprite.bezierVertex(size * 0.8, size * 0.4, size * 0.6, size * 0.1, size, 0);
+      sprite.bezierVertex(size * 1.4, size * 0.1, size * 1.2, size * 0.4, size, size * 0.75);
+      sprite.endShape(CLOSE);
+
+      sprite.stroke(clr[0], clr[1], clr[2] - 20, 0.8);
+      sprite.strokeWeight(0.5);
+      sprite.line(size, size * 0.75, size, size * 0.1);
+      sprite.line(size, size * 0.6, size * 0.8, size * 0.4);
+      sprite.line(size, size * 0.6, size * 1.2, size * 0.4);
+      sprite.line(size, size * 0.75, size * 0.9, size * 0.5);
+      sprite.line(size, size * 0.75, size * 1.1, size * 0.5);
+
+      sprite.colorMode(RGB);
+      this.leafSprites.push({ sprite, color: clr });
+    }
+
+    let flowerCount = floor(random(6, 8));
+    for (let i = 0; i < flowerCount; i++) {
+      let petalSize = random(10, 15);
+      let petalNum = floor(random(5, 8));
+      let sprite = createGraphics(petalSize * 3, petalSize * 3);
+      sprite.colorMode(HSB);
+      sprite.noStroke();
+      let baseHue = random(0, 30);
+      sprite.fill(baseHue, random(60, 80), random(70, 90));
+      for (let j = 0; j < petalNum; j++) {
+        sprite.push();
+        sprite.translate(petalSize * 1.5, petalSize * 1.5);
+        sprite.rotate(TWO_PI / petalNum * j);
+        sprite.ellipse(petalSize / 2, 0, petalSize, petalSize * 0.6);
+        sprite.pop();
+      }
+      sprite.fill((baseHue + 20) % 360, 80, random(80, 100));
+      sprite.ellipse(petalSize * 1.5, petalSize * 1.5, petalSize * 0.4, petalSize * 0.4);
+      sprite.colorMode(RGB);
+      this.flowerSprites.push({ sprite, petalSize });
+      
+    }
+    
+  }
+
+  static createFruitSprite(size, colors) {
+    let sprite = createGraphics(size * 2.2, size * 2.2);
+    sprite.noStroke();
+
+    const cx = sprite.width / 2;
+    const cy = sprite.height / 2;
+    // 柔和陰影
+    sprite.drawingCo
+    sprite.drawingContext.shadowColor = 'rgba(0,0,0,0.25)';
+    sprite.drawingContext.shadowBlur = 10;
+  
+
+    // 椰子外殼（偏橢圓）
+    sprite.fill(colors.fruit[0], colors.fruit[1], colors.fruit[2]);
+    sprite.ellipse(cx, cy, size * 1.05, size * 1.15);
+
+
+    // 亮面（上左）
+    sprite.drawingContext.shadowBlur = 0;
+    sprite.fill(
+    min(colors.fruit[0] + 40, 255),
+    min(colors.fruit[1] + 25, 255),
+    min(colors.fruit[2] + 15, 255),
+    140
+    );
+    sprite.ellipse(cx - size * 0.18, cy - size * 0.22, size * 0.55, size * 0.6);
+
+
+    // 暗面（下右）
+    sprite.fill(
+    max(colors.fruit[0] - 35, 0),
+    max(colors.fruit[1] - 25, 0),
+    max(colors.fruit[2] - 20, 0),
+    160
+    );
+    sprite.ellipse(cx + size * 0.18, cy + size * 0.22, size * 0.7, size * 0.75);
+
+
+    // 纖維紋理（細線）
+    sprite.noFill();
+    sprite.stroke(
+    max(colors.fruit[0] - 25, 0),
+    max(colors.fruit[1] - 15, 0),
+    max(colors.fruit[2] - 10, 0),
+    90
+    );
+    sprite.strokeWeight(0.8);
+    for (let i = 0; i < 10; i++) {
+    const a = random(-PI * 0.9, PI * 0.9);
+    const rx = size * random(0.15, 0.45);
+    const ry = size * random(0.25, 0.55);
+    const x1 = cx + cos(a) * rx;
+    const y1 = cy + sin(a) * ry;
+    const x2 = cx + cos(a + random(-0.2, 0.2)) * (rx + size * 0.25);
+    const y2 = cy + sin(a + random(-0.2, 0.2)) * (ry + size * 0.25);
+    sprite.line(x1, y1, x2, y2);
+    }
+
+
+    // 小蒂頭（可選）
+    sprite.noStroke();
+    sprite.fill(
+    max(colors.fruit[0] - 45, 0),
+    max(colors.fruit[1] - 30, 0),
+    max(colors.fruit[2] - 25, 0),
+    200
+    );
+    sprite.ellipse(cx, cy - size * 0.55, size * 0.22, size * 0.16);
+    //sprite.fill(colors.fruit[0], colors.fruit[1], colors.fruit[2]);
+    //sprite.ellipse(size, size, size, size);
+    return sprite;
+  }
+
+  static getRandomLeafSprite() { return random(this.leafSprites); }
+  static getRandomFlowerSprite() { return random(this.flowerSprites); }
+}
+
+function getRealPosFrom(gfx, x, y) {
+  const ctx = gfx.drawingContext;
+  const m = ctx.getTransform();
+  return {
+    x: m.a * x + m.c * y + m.e,
+    y: m.b * x + m.d * y + m.f,
+  };
+}
+
+class Tree {
+  constructor(x, y) {
+    this.config = {
+      axiom: "F",
+      sentence: "F",
+      generation: 0,
+      maxGenerations: 3,
+      windAngle: 0,
+      posX: x,
+      posY: y,
+      growFactor: 1,
+      windSpeed: 0.05,
+      windStrength: 0.035,
+      branchMinLength: 95,
+      branchShrink: 0.9,
+      branchAngleMin: 2,
+      branchAngleMax: 8,
+      flowerChance: 0,
+      fruitChance: 0.03,
+      fruitSizeMin: 26,
+      fruitSizeMax: 38,
+      leafSize: 10
+    };
+    this.colors = {
+      branch: [random(100, 139), random(50, 69), random(10, 19)],
+      //fruit: [random(150, 255), random(50, 150), random(0, 100)]
+      fruit: [random(118, 150), random(70, 78), random(30, 44)]
+    };
+    this.decorations = { flowers: [], fruits: [], leafSprites: [] };
+    this.rules = [
+    { a: "F", b: "FF", prob: 1 }
+    //  { a: "F", b: "F[+FF][-FF]F[+F][-F]", prob: 0.3 },
+    //  { a: "F", b: "FF[+F][-F][+FF][-FF]", prob: 0.25 },
+    //  { a: "F", b: "F[++F][--F]F[++F][--F]", prob: 0.2 },
+    //  { a: "F", b: "FF[+F-F][-F+F]F", prob: 0.15 },
+    //  { a: "F", b: "F[+FF][-FF][+++F][---F]", prob: 0.1 }
+    ];
+    this.branchData = [];
+    this.branchLayer = createGraphics(width, height);
+    this.leafLayer = createGraphics(width, height);
+    this.initialize();
+  }
+
+  initialize() {
+    this.config.sentence = this.config.axiom;
+    this.config.generation = 0;
+    this.decorations.flowers = [];
+    this.decorations.fruits = [];
+    this.decorations.leafSprites = [];
+    this.branchData = [];
+    for (let i = 0; i < this.config.maxGenerations; i++) this.generate();
+    this.precomputeDecorations();
+  }
+
+  generate() {
+    let nextSentence = "";
+    let branchIndex = 0;
+
+    for (let i = 0; i < this.config.sentence.length; i++) {
+      let current = this.config.sentence.charAt(i);
+      if (current === "F") {
+        let r = random(1);
+        let cumulativeProb = 0;
+        for (let rule of this.rules) {
+          cumulativeProb += rule.prob;
+          if (r <= cumulativeProb) {
+            let newBranchString = rule.b;
+            for (let char of newBranchString) {
+              if (char === "F") {
+                let baseLen = this.config.branchMinLength * pow(this.config.branchShrink, this.config.generation);
+                let len = baseLen * (0.8 + noise(branchIndex) * 0.4);
+                let angle = radians(map(random(random()), 0, 1, this.config.branchAngleMin, this.config.branchAngleMax));
+                this.branchData.push({ len, angle });
+                branchIndex++;
+              }
+            }
+            nextSentence += newBranchString;
+            break;
+          }
+        }
+      } else {
+        nextSentence += current;
+      }
+    }
+    this.config.sentence = nextSentence;
+    this.config.generation++;
+  }
+
+  precomputeDecorations() {
+    for (let i = 0; i < this.config.sentence.length; i++) {
+      let current = this.config.sentence.charAt(i);
+      if (current === "F") {
+        if (random(1) < this.config.flowerChance) {
+          let flowerData = SpriteFactory.getRandomFlowerSprite();
+          this.decorations.flowers.push({ sprite: flowerData.sprite, index: i, petalSize: flowerData.petalSize });
+        }
+        if (random(1) < this.config.fruitChance) {
+          let size = random(this.config.fruitSizeMin, this.config.fruitSizeMax);
+          this.decorations.fruits.push(new Fruit(size, i, this.colors, { x: 0, y: 0 }));
+        }
+        let nextChar = i + 1 < this.config.sentence.length ? this.config.sentence.charAt(i + 1) : null;
+        if (nextChar !== "[" && nextChar !== "F" && nextChar !== "+" && nextChar !== "-") {
+          let leafCount = floor(random(1, 4));
+          let leafSprites = [];
+          for (let j = 0; j < leafCount; j++) {
+            let angle = random(-PI / 2, PI / 2);
+            let spriteData = SpriteFactory.getRandomLeafSprite();
+            leafSprites.push({ sprite: spriteData.sprite, angle, color: spriteData.color });
+          }
+          this.decorations.leafSprites.push({ index: i, sprites: leafSprites });
+        }
+      }
+    }
+  }
+
+  draw() {
+    this.config.windAngle = noise(frameCount * this.config.windSpeed + this.config.posX) * this.config.windStrength;
+
+    this.branchLayer.clear();
+    this.leafLayer.clear();
+
+    this.branchLayer.push();
+    this.branchLayer.translate(this.config.posX, this.config.posY);
+    this.drawBranches();
+    this.branchLayer.pop();
+
+    this.leafLayer.push();
+    this.leafLayer.translate(this.config.posX, this.config.posY);
+    this.drawDecorations();
+    this.leafLayer.pop();
+  }
+
+  drawBranches() {
+    this.branchLayer.stroke(this.colors.branch[0], this.colors.branch[1], this.colors.branch[2]);
+
+    let branchCounter = 0;
+    let stackDepth = 0;
+    const swayFactor = frameCount * 0.05;
+    const windFactor = this.config.windAngle;
+
+    for (let i = 0; i < this.config.sentence.length; i++) {
+      let current = this.config.sentence.charAt(i);
+      if (current === "F") {
+        let branch = this.branchData[branchCounter] || { len: 150, angle: radians(20) };
+        let currentLen = branch.len * this.config.growFactor;
+        let sway = sin(swayFactor + i) * windFactor * map(currentLen, 0, 300, 0.5, 0.1);
+
+        let branchWidth = map(stackDepth, 0, this.config.maxGenerations, 5, 1);
+        this.branchLayer.strokeWeight(branchWidth);
+        this.branchLayer.line(0, 0, 0, -currentLen);
+        this.branchLayer.translate(0, -currentLen);
+        this.branchLayer.rotate(sway);
+        branchCounter++;
+      } else if (current === "+") {
+        let branch = this.branchData[branchCounter - 1] || { angle: radians(20) };
+        this.branchLayer.rotate(branch.angle + windFactor * 0.5);
+      } else if (current === "-") {
+        let branch = this.branchData[branchCounter - 1] || { angle: radians(20) };
+        this.branchLayer.rotate(-branch.angle - windFactor * 0.5);
+      } else if (current === "[") {
+        this.branchLayer.push();
+        stackDepth++;
+      } else if (current === "]") {
+        this.branchLayer.pop();
+        stackDepth--;
+      }
+    }
+  }
+
+  drawDecorations() {
+    let flowerIndex = 0;
+    let fruitIndex = 0;
+    let leafIndex = 0;
+    let branchCounter = 0;
+    let stackDepth = 0;
+    const swayFactor = frameCount * 0.05;
+    const windFactor = this.config.windAngle;
+
+    this.leafLayer.imageMode(CENTER);
+
+    for (let i = 0; i < this.config.sentence.length; i++) {
+      let current = this.config.sentence.charAt(i);
+      if (current === "F") {
+        let branch = this.branchData[branchCounter] || { len: 150, angle: radians(20) };
+        let currentLen = branch.len * this.config.growFactor;
+        let sway = sin(swayFactor + i) * windFactor * map(currentLen, 0, 300, 0.5, 0.1);
+
+        this.leafLayer.translate(0, -currentLen);
+        this.leafLayer.rotate(sway);
+
+        if (leafIndex < this.decorations.leafSprites.length && i === this.decorations.leafSprites[leafIndex].index) {
+          if (this.config.growFactor > 0.8) {
+            this.drawLeafSprites(leafIndex, branch.angle);
+            leafIndex++;
+          }
+        }
+
+        if (flowerIndex < this.decorations.flowers.length && i === this.decorations.flowers[flowerIndex].index) {
+          if (this.config.growFactor > 0.6) {
+            this.drawFlowerSprite(flowerIndex, i);
+            flowerIndex++;
+          }
+        }
+
+        if (fruitIndex < this.decorations.fruits.length && i === this.decorations.fruits[fruitIndex].index) {
+          if (this.config.growFactor > 0.9 && !this.decorations.fruits[fruitIndex].hidden) {
+            let fruit = this.decorations.fruits[fruitIndex];
+            // 這裡改成用 leafLayer 的 transform 取世界座標（不然會拿到 identity）
+            fruit.branchPos = getRealPosFrom(this.leafLayer, 0, 0);
+            this.drawFruitSprite(fruitIndex, i);
+            this.checkFruitMaturity(fruitIndex);
+            fruitIndex++;
+          }
+        }
+        branchCounter++;
+      } else if (current === "+") {
+        let branch = this.branchData[branchCounter - 1] || { angle: radians(20) };
+        this.leafLayer.rotate(branch.angle + windFactor * 0.5);
+      } else if (current === "-") {
+        let branch = this.branchData[branchCounter - 1] || { angle: radians(20) };
+        this.leafLayer.rotate(-branch.angle - windFactor * 0.5);
+      } else if (current === "[") {
+        this.leafLayer.push();
+        stackDepth++;
+      } else if (current === "]") {
+        this.leafLayer.pop();
+        stackDepth--;
+      }
+    }
+  }
+
+  drawLeafSprites(index, branchAngle) {
+    let leafData = this.decorations.leafSprites[index];
+    let leafSwayX = sin(frameCount * 0.1 + index) * 0.05;
+
+    this.leafLayer.push();
+    for (let leaf of leafData.sprites) {
+      this.leafLayer.push();
+      this.leafLayer.rotate(leafSwayX + branchAngle + leaf.angle);
+      this.leafLayer.image(leaf.sprite, 0, -this.config.leafSize * 0.75);
+      this.leafLayer.pop();
+    }
+    this.leafLayer.pop();
+  }
+
+  drawFlowerSprite(index, treeIndex) {
+    let flower = this.decorations.flowers[index];
+    let flowerSway = sin(frameCount * 0.08 + treeIndex) * 0.07;
+    this.leafLayer.push();
+    this.leafLayer.rotate(flowerSway);
+    this.leafLayer.image(flower.sprite, -flower.petalSize * 1.5, -flower.petalSize * 1.5);
+    this.leafLayer.pop();
+  }
+
+  drawFruitSprite(index, treeIndex) {
+    let fruit = this.decorations.fruits[index];
+    let fruitSway = sin(frameCount * 0.08 + treeIndex) * 0.07;
+    this.leafLayer.push();
+    this.leafLayer.rotate(fruitSway);
+    this.leafLayer.image(fruit.sprite, -fruit.size, -fruit.size);
+    this.leafLayer.pop();
+  }
+
+  checkFruitMaturity(index) {
+    let fruit = this.decorations.fruits[index];
+    if (!fruit.isMature && fruit.matureChance < 0.1) {
+      fruit.maturityCounter++;
+      if (fruit.maturityCounter > 100 && random(1) < 0.0001) {
+        fruit.isMature = true;
+        fruit.hidden = true;
+
+        globalFruitParticles.push({
+          x: fruit.branchPos.x,
+          y: fruit.branchPos.y,
+          vx: random(-1, 1),
+          vy: random(-1, 1),
+          size: fruit.size,
+          color: this.colors.fruit,
+          sprite: fruit.sprite,
+          bounceCount: 0,
+          maxBounces: 2,
+          life: 255
+        });
+      }
+    }
+  }
+
+  grow(amount) {
+    this.config.growFactor = constrain(this.config.growFactor + amount, 0, 1);
+  }
+}
+
+function updateAndDrawFruitParticles() {
+  for (let i = globalFruitParticles.length - 1; i >= 0; i--) {
+    let p = globalFruitParticles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.1;
+
+    if (p.y + p.size / 2 > height - 50 && p.bounceCount < p.maxBounces) {
+      p.y = height - 50 - p.size / 2;
+      p.vy *= -0.3;
+      p.vx *= 0.3;
+      p.bounceCount++;
+    }
+
+    if (p.bounceCount >= p.maxBounces) p.life -= 2;
+
+    push();
+    translate(p.x, p.y);
+    image(p.sprite, -p.size, -p.size);
+    pop();
+
+    if (p.life <= 0 || p.y > height) globalFruitParticles.splice(i, 1);
+  }
+}
+
+let tree;
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  SpriteFactory.initializeSprites();
+  tree = new Tree(width / 2, height);
+}
+
+function draw() {
+  background(242, 239, 232);
+
+  tree.draw();
+
+  image(tree.branchLayer, 0, 0);
+  updateAndDrawFruitParticles();
+  image(tree.leafLayer, 0, 0);
+
+  fill(139, 69, 19);
+  noStroke();
+  rect(0, height - 50, width, 50);
+}
+
+function mousePressed() {
+  tree = new Tree(width / 2, height);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  tree = new Tree(width / 2, height);
+}
+</script>
+</body>
+</html>

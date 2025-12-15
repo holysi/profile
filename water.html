@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>字母池｜白色漣漪</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #070a12; overflow: hidden; }
+    canvas { display:block; width:100vw; height:100vh; }
+    .hint{
+      position: fixed; left: 12px; bottom: 10px;
+      font: 12px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+      color: rgba(255,255,255,.55);
+      user-select: none; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div class="hint">Click / Tap：製造白色漣漪（反彈＋干涉）</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha: true });
+
+  // ===== 視覺：字母池 =====
+  const CHARSET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*+-=~';
+  const BG_FADE = 0.18; // 越小殘影越長
+
+  // 五段能量（0..4）：越高越亮
+  const LEVELS = 5;
+
+  // ===== 漣漪：用 2D 波動方程離散化（自然反彈＋相遇增能） =====
+  // next = (2*curr - prev) + c^2 * Laplacian(curr)
+  // 反彈：邊界使用「鏡像取樣」（reflect）
+  // 相遇增能：干涉（疊加）本身會讓能量（height^2 + vel^2）變大
+  const WAVE = {
+    c2: 0.28,        // 波速係數（越大跑越快，也更容易發散）
+    damping: 0.985,  // 衰減（越接近 1 越持久）
+    impulse: 1.35,   // 點擊注入強度
+    impulseRadius: 3 // 注入半徑（以格子為單位）
+  };
+
+  // ===== 狀態 =====
+  let dpr = 1;
+  let w = 0, h = 0;
+
+  let cell = { size: 18, cols: 0, rows: 0, font: '' };
+
+  // 字母格資料
+  let chars = [];
+  let lastMutate = []; // 用於限流：避免每幀狂換字
+
+  // 波場：prev/curr/next（三張 buffer）
+  let prev = new Float32Array(0);
+  let curr = new Float32Array(0);
+  let next = new Float32Array(0);
+
+  // ===== 工具 =====
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const randChar = () => CHARSET[(Math.random() * CHARSET.length) | 0];
+
+  function reflectIndex(i, n) {
+    // 鏡像反射：-1 -> 1, n -> n-2 ...（Neumann-like）
+    if (i < 0) return -i;
+    if (i >= n) return (2 * n - 2) - i;
+    return i;
+  }
+
+  function idxOf(x, y) {
+    return y * cell.cols + x;
+  }
+
+  function sample(buf, x, y) {
+    const rx = reflectIndex(x, cell.cols);
+    const ry = reflectIndex(y, cell.rows);
+    return buf[ry * cell.cols + rx];
+  }
+
+  function fit() {
+    dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    w = Math.floor(window.innerWidth);
+    h = Math.floor(window.innerHeight);
+
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // 讓格子大小隨螢幕調整
+    const t = clamp((Math.min(w, h) - 360) / 900, 0, 1);
+    cell.size = Math.round(14 + (26 - 14) * t);
+    cell.cols = Math.ceil(w / cell.size);
+    cell.rows = Math.ceil(h / cell.size);
+    cell.font = `${cell.size}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
+
+    const n = cell.cols * cell.rows;
+    chars = new Array(n);
+    lastMutate = new Float32Array(n);
+
+    prev = new Float32Array(n);
+    curr = new Float32Array(n);
+    next = new Float32Array(n);
+
+    for (let i = 0; i < n; i++) {
+      chars[i] = randChar();
+      lastMutate[i] = 0;
+      prev[i] = curr[i] = next[i] = 0;
+    }
+
+    ctx.fillStyle = '#070a12';
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  function injectImpulse(px, py) {
+    const x0 = Math.floor(px / cell.size);
+    const y0 = Math.floor(py / cell.size);
+
+    const r = WAVE.impulseRadius;
+    const sigma = r * 0.55;
+    const amp = WAVE.impulse;
+
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const x = x0 + dx;
+        const y = y0 + dy;
+        if (x < 0 || x >= cell.cols || y < 0 || y >= cell.rows) continue;
+
+        const d2 = dx * dx + dy * dy;
+        const g = Math.exp(-d2 / (2 * sigma * sigma));
+        const k = idxOf(x, y);
+
+        // 同時推 curr/prev：避免第一幀出現怪異尖峰
+        curr[k] += amp * g;
+        prev[k] += amp * g * 0.6;
+      }
+    }
+  }
+
+  function pointerToCanvas(e) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    const p = pointerToCanvas(e);
+    injectImpulse(p.x, p.y);
+  }, { passive: true });
+
+  window.addEventListener('resize', fit);
+
+  // ===== 主迴圈 =====
+  function step(tNow) {
+    // 背景殘影（讓漣漪看起來「流動」）
+    ctx.fillStyle = `rgba(7,10,18,${BG_FADE})`;
+    ctx.fillRect(0, 0, w, h);
+
+    // --- 1) 波場更新（反彈＋干涉） ---
+    const c2 = WAVE.c2;
+    const damp = WAVE.damping;
+
+    for (let y = 0; y < cell.rows; y++) {
+      for (let x = 0; x < cell.cols; x++) {
+        const i = idxOf(x, y);
+
+        // 4-neighbor Laplacian
+        const center = curr[i];
+        const lap =
+          sample(curr, x - 1, y) +
+          sample(curr, x + 1, y) +
+          sample(curr, x, y - 1) +
+          sample(curr, x, y + 1) -
+          4 * center;
+
+        let v = (2 * center - prev[i]) + c2 * lap;
+        v *= damp;
+        next[i] = v;
+      }
+    }
+
+    // swap buffers
+    const tmp = prev;
+    prev = curr;
+    curr = next;
+    next = tmp;
+
+    // --- 2) 渲染：白色水波 + 五段能量字母 ---
+    ctx.font = cell.font;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const size = cell.size;
+    const half = size * 0.5;
+
+    // 能量標準化：E ~ height^2 + vel^2（相遇時自然變大）
+    // 這裡用一些增益讓畫面「更像漣漪」
+    const energyGain = 3.6;
+
+    for (let y = 0; y < cell.rows; y++) {
+      const py = y * size + half;
+      for (let x = 0; x < cell.cols; x++) {
+        const px = x * size + half;
+        const i = idxOf(x, y);
+
+        const height = curr[i];
+        const vel = curr[i] - prev[i];
+
+        // 基於能量（干涉會疊加 -> 更高）
+        let E = (height * height + (vel * vel) * 1.8) * energyGain;
+        // 壓縮動態範圍：讓弱漣漪也看得見
+        E = 1 - Math.exp(-E);
+
+        const level = clamp((E * LEVELS) | 0, 0, LEVELS - 1);
+
+        // 讓人更有「漣漪感」：用局部坡度做些微偏移（像折射）
+        const gx = sample(curr, x + 1, y) - sample(curr, x - 1, y);
+        const gy = sample(curr, x, y + 1) - sample(curr, x, y - 1);
+        const jitter = 0.22 + level * 0.08;
+        const ox = gx * jitter;
+        const oy = gy * jitter;
+
+        // 白色水波底紋（越高能量越亮）
+        // 用小方塊做「能量暈」：看起來像白色漣漪在字母池中穿梭
+        const waveAlpha = 0.06 + 0.22 * E;
+        if (waveAlpha > 0.07) {
+          ctx.fillStyle = `rgba(255,255,255,${waveAlpha})`;
+          ctx.fillRect(x * size, y * size, size, size);
+        }
+
+        // 字母亮度：五段（越高越亮）
+        const light = 40 + level * 13 + E * 20;
+        const alpha = 0.55 + level * 0.10;
+        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+
+        // 高能量時換字（限流）
+        const mutateThreshold = 2; // >=2 開始偶爾換字
+        if (level >= mutateThreshold) {
+          const cooldown = 170 - level * 25; // 高能量換得更頻繁
+          if (tNow - lastMutate[i] > cooldown) {
+            chars[i] = randChar();
+            lastMutate[i] = tNow;
+          }
+        }
+
+        // 用陰影提高「月量」(亮度) 層次
+        ctx.shadowBlur = 0.5 + level * 2.2;
+        ctx.shadowColor = 'rgba(255,255,255,0.9)';
+
+        // 字體本體（白色 + 亮度感）
+        // 亮度用第二次描繪疊加：更像水面高光
+        ctx.fillText(chars[i], px + ox, py + oy);
+        if (level >= 3) {
+          ctx.globalAlpha = 0.35 + 0.15 * E;
+          ctx.fillText(chars[i], px + ox * 0.6, py + oy * 0.6);
+          ctx.globalAlpha = 1;
+        }
+
+        // 取消陰影，避免累積
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    requestAnimationFrame(step);
+  }
+
+  fit();
+  requestAnimationFrame(step);
+})();
+</script>
+</body>
+</html>
