@@ -34,58 +34,69 @@ static palmFrondSprites = [];
 
 
 static initializePalmFronds() {
-this.palmFrondSprites = [];
-const count = floor(random(6, 10));
-for (let i = 0; i < count; i++) {
-const L = random(140, 220);
-const W = random(40, 70);
-const g = createGraphics(L + 40, W + 40);
-g.clear();
-g.noFill();
+  this.palmFrondSprites = [];
+  const count = floor(random(8, 13));
 
+  for (let i = 0; i < count; i++) {
+    // ✅ 更長
+    const L = random(240, 360);
+    const W = random(70, 120);
 
-// 主葉脈
-g.stroke(40, 90, 50, 220);
-g.strokeWeight(2.2);
+    const g = createGraphics(L + 80, W + 120);
+    g.clear();
+    g.noFill();
 
+    const ox = 40;
+    const oy = (W + 120) * 0.55;
 
-const ox = 20;
-const oy = (W + 40) / 2;
+    // ✅ 主葉脈：更彎、更下垂（尾端下墜）
+    g.stroke(50, 105, 55, 235);
+    g.strokeWeight(2.6);
 
+    const bendAmp = random(18, 34);     // 中段彎曲
+    const droop = random(80, 140);      // 尾端下垂幅度
 
-// 畫一條微彎曲的主葉脈
-g.beginShape();
-for (let t = 0; t <= 1.001; t += 0.05) {
-const x = ox + t * L;
-const bend = sin(t * PI) * random(10, 22);
-const y = oy - bend;
-g.curveVertex(x, y);
+    g.beginShape();
+    for (let t = 0; t <= 1.0001; t += 0.035) {
+      const x = ox + t * L;
+      const midBend = sin(t * PI) * bendAmp;
+      const tailDroop = pow(t, 2.2) * droop;        // 越靠尾端越往下
+      const y = oy - midBend + tailDroop;
+      g.curveVertex(x, y);
+    }
+    g.endShape();
+
+    // ✅ 小葉片：更多、更長、角度更往下
+    g.stroke(75, 150, 80, 215);
+    g.strokeWeight(1.2);
+
+    const leafletCount = 76;           // 更多分支
+    for (let k = 0; k < leafletCount; k++) {
+      const t = k / (leafletCount - 1);
+      const x = ox + t * L;
+
+      const midBend = sin(t * PI) * bendAmp;
+      const tailDroop = pow(t, 2.2) * droop;
+      const y = oy - midBend + tailDroop;
+
+      const profile = 1 - abs(t - 0.45) * 2;       // 0..1..0
+      const baseLen = map(constrain(profile, 0, 1), 0, 1, 14, 64);
+      const len = baseLen * (0.9 + noise(i * 10 + k * 0.12) * 0.5);
+
+      // 越靠尾端，小葉片越下垂
+      const down = map(t, 0, 1, 0.15, 0.95);
+      const spread = map(t, 0, 1, 0.75, 0.35);      // 尾端更收攏
+      const a = (random(-0.35, 0.35) + (t - 0.5) * 0.35) * spread;
+
+      // 左右各一片（往下彎）
+      g.line(x, y, x - cos(a) * len, y + sin(abs(a) + down) * len);
+      g.line(x, y, x + cos(a) * len, y + sin(abs(a) + down) * len);
+    }
+
+    this.palmFrondSprites.push({ sprite: g, L, W });
+  }
 }
-g.endShape();
 
-
-// 小葉片(兩側羽狀)
-g.stroke(55, 120, 60, 200);
-g.strokeWeight(1.2);
-for (let k = 0; k < 42; k++) {
-const t = k / 41;
-const x = ox + t * L;
-const bend = sin(t * PI) * random(10, 22);
-const y = oy - bend;
-const len = map(1 - abs(t - 0.5) * 2, 0, 1, 10, 34) * random(0.8, 1.2);
-const a = map(t, 0, 1, -0.5, 0.5) + random(-0.15, 0.15);
-
-
-// 左右各一片
-g.line(x, y, x - cos(a) * len, y + sin(a) * len);
-g.line(x, y, x + cos(a) * len, y + sin(a) * len);
-}
-
-
-this.palmFrondSprites.push({ sprite: g, L, W });
-}
-this.trunkTip = { x: this.config.posX, y: this.config.posY };
-}
 
 
 static getRandomPalmFrond() {
@@ -425,7 +436,7 @@ class Tree {
         let sway = sin(swayFactor + i) * windFactor * map(currentLen, 0, 300, 0.5, 0.1);
 
         this.leafLayer.translate(0, -currentLen);
-        this.leafLayer.rotate(sway);
+                this.leafLayer.rotate(sway);
 
         if (leafIndex < this.decorations.leafSprites.length && i === this.decorations.leafSprites[leafIndex].index) {
           if (this.config.growFactor > 0.8) {
